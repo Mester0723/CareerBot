@@ -1,7 +1,14 @@
 import telebot
 from config import TOKEN
-from logic import *
-import sqlite3
+from logic import (
+    build_main_menu,
+    build_interests_menu,
+    generate_recommendation,
+    save_recommendation,
+    format_recommendations,
+    handle_user_interest,
+    get_all_skills_text
+)
 
 bot = telebot.TeleBot(TOKEN)
 user_data = {}
@@ -28,8 +35,8 @@ def callback(call):
         interests = user_data.get(user_id, ["Аналитика"])
         recommendations = generate_recommendation(interests)
         save_recommendation(user_id, ", ".join(recommendations))
-        formatted_list = "\n".join([f"- {item}" for item in recommendations])
-        bot.send_message(chat_id, "🎯 Рекомендованные направления:\n" + formatted_list)
+        detailed_text = format_recommendations(recommendations)
+        bot.send_message(chat_id, "🎯 Рекомендованные направления:\n\n" + detailed_text, parse_mode='HTML')
 
     elif call.data == "interests":
         bot.send_message(chat_id, "📄 Выберите ваши интересы:", reply_markup=build_interests_menu())
@@ -39,6 +46,10 @@ def callback(call):
         msg = handle_user_interest(user_id, username, interest)
         user_data[user_id] = [interest]
         bot.send_message(chat_id, msg)
+
+    elif call.data == "all_skills":
+        text = get_all_skills_text()
+        bot.send_message(chat_id, text, parse_mode='HTML')
 
     elif call.data == "back":
         bot.send_message(chat_id, "🏠 Главное меню:", reply_markup=build_main_menu())
