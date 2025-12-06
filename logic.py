@@ -20,9 +20,16 @@ def init_db():
         recommendation TEXT
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS test_attempts (
+        user_id INTEGER,
+        interest TEXT,
+        last_test_ts INTEGER,
+        PRIMARY KEY (user_id, interest)
+    )
+    """)
     conn.commit()
     conn.close()
-
 init_db()
 
 # Работа с пользователями
@@ -47,7 +54,7 @@ def save_recommendation(user_id, recommendation):
     conn.commit()
     conn.close()
 
-# Логика рекомендаций (ключи без эмодзи)
+# Логика рекомендаций
 CAREER_OPTIONS = {
     "Программирование": ["Логика", "Математика", "Аналитика"],
     "Дизайн": ["Творчество", "Визуальное мышление", "Эстетика"],
@@ -56,7 +63,7 @@ CAREER_OPTIONS = {
     "Наука": ["Любопытство", "Исследования", "Аналитика"]
 }
 
-# Подробные описания направлений + примеры (HTML-формат, эмодзи внутри описаний)
+# Подробные описания направлений + примеры
 NBSP = "\u00A0"
 CAREER_DESCRIPTIONS = {
     "Программирование": (
@@ -106,7 +113,7 @@ CAREER_DESCRIPTIONS = {
     )
 }
 
-# Экранирование HTML для динамических значений (имён направлений, списка навыков)
+# Экранирование HTML для динамических значений
 def _escape_html(text: str) -> str:
     return (text
             .replace("&", "&amp;")
@@ -119,17 +126,59 @@ def _escape_html(text: str) -> str:
 def build_main_menu():
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("🎯 Получить рекомендацию", callback_data="recommend"))
+    kb.add(InlineKeyboardButton("🧪 Пройти тест", callback_data="quiz"))
     kb.add(InlineKeyboardButton("📚 Все навыки", callback_data="all_skills"))
     kb.add(InlineKeyboardButton("📝 Мои интересы", callback_data="interests"))
     return kb
 
-# Построение меню выбора интересов (без эмодзи в названиях)
+# Построение меню выбора интересов
 def build_interests_menu():
     kb = InlineKeyboardMarkup()
     for career in CAREER_OPTIONS.keys():
         kb.add(InlineKeyboardButton(career, callback_data=f"interest_{career}"))
     kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="back"))
     return kb
+
+# Меню выбора интереса для запуска теста
+def build_interests_menu_for_quiz():
+    kb = InlineKeyboardMarkup()
+    for career in CAREER_OPTIONS.keys():
+        kb.add(InlineKeyboardButton(career, callback_data=f"quiz_{career}"))
+    kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="back"))
+    return kb
+
+# Получить сохранённый интерес пользователя
+def get_user_interest(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT interests FROM users WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row and row[0]:
+        return row[0]
+    return None
+
+# Сохранить/обновить время последнего теста
+def set_last_test_time(user_id, interest, ts):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO test_attempts (user_id, interest, last_test_ts)
+        VALUES (?, ?, ?)
+    """, (user_id, interest, int(ts)))
+    conn.commit()
+    conn.close()
+
+# Получить время последнего теста
+def get_last_test_time(user_id, interest):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT last_test_ts FROM test_attempts WHERE user_id = ? AND interest = ?", (user_id, interest))
+    row = cur.fetchone()
+    conn.close()
+    if row and row[0]:
+        return int(row[0])
+    return None
 
 # Генерация рекомендаций на основе интересов пользователя
 def generate_recommendation(user_interests):
@@ -138,15 +187,14 @@ def generate_recommendation(user_interests):
         if any(interest in skills for interest in user_interests):
             recommended.append(career)
     if not recommended:
-        # fallback — направления без эмодзи
         recommended = ["Менеджмент", "Маркетинг", "Дизайн"]
     return recommended
 
-# Форматирование рекомендаций (коротко, без подробных описаний)
+# Форматирование рекомендаций
 def format_recommendations(recommendations):
     return "\n".join(f"• <b>{_escape_html(c)}</b>" for c in recommendations)
 
-# Получение полного списка направлений и навыков (описания берутся из CAREER_DESCRIPTIONS, где есть эмодзи)
+# Получение полного списка направлений и навыков
 def get_all_skills_text():
     parts = []
     for career, skills in CAREER_OPTIONS.items():
