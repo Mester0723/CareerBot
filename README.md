@@ -21,7 +21,6 @@ directory/
 > - Пакет `pyTelegramBotAPI`
 
 ```
-powershell
 python -m pip install pyTelegramBotAPI
 ```
 
